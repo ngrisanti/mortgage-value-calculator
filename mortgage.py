@@ -1,29 +1,33 @@
 import numpy as np
+import pandas as pd
 from matplotlib import pyplot as plt
 
-def mortgageReturnRate(housePrice:float, interestRateAnnual:float, downPayment:float, 
+def mortgageReturnAnalysis(housePrice:float, interestRateAnnual:float, downPayment:float, 
                   closingCostPercent:float, mortgageTermYears:float, propertyTaxRate:float, 
-                  rentCostMonthly:float, houseAppreciationRate:float, marketReturnRate:float,
-                  housesteadDeduction:float=100000) -> float:
+                  houseAppreciationRate:float, homesteadDeduction:float = None, 
+                  analysisTimePeriodYears:float = None, showPlot:bool = None) -> pd.DataFrame:
+
+    if homesteadDeduction is None:
+        homesteadDeduction = 100000
+    if analysisTimePeriodYears is None:
+        analysisTimePeriodYears = 40
+    if showPlot is None:
+        showPlot = False
+    
     p = housePrice
     I, i = interestRateAnnual, interestRateAnnual/12
     d = downPayment
     c = closingCostPercent
     N, n = mortgageTermYears, mortgageTermYears*12
     t = propertyTaxRate
-    R, r = rentCostMonthly*12, rentCostMonthly
-    aH, ah = 1 + houseAppreciationRate, 1 + 12*((1 + houseAppreciationRate)**(1/12) - 1)
-    ar = 1 + marketReturnRate
-    hd = housesteadDeduction
+    aH, ah = houseAppreciationRate, 12*((1 + houseAppreciationRate)**(1/12) - 1)
+    hd = homesteadDeduction
     l = p - d   # loan amount
+
+    c = 0 if l <= 0 else c
 
     paymentNoTax_monthly = l*(i*(1+i)**n)/((1+i)**n-1)
     paymentNoTax_total = paymentNoTax_monthly * n
-    interestPaid_total = paymentNoTax_total - l
-
-    # print(f'Monthly payment (no tax): {paymentNoTax_monthly}')
-    # print(f'Total payment (no tax): {paymentNoTax_total}')
-    # print(f'Total interest paid: {interestPaid_total}')
 
     loanRemaining_monthly = np.array([l])
     interestPayments_monthly = np.array([])
@@ -38,38 +42,66 @@ def mortgageReturnRate(housePrice:float, interestRateAnnual:float, downPayment:f
     principalPayments_monthly = np.array([paymentNoTax_monthly \
                                           - interestPayments_monthly[month] for month in range(n)])
     
-    plot = False
-    if plot:
-        plt.plot(range(len(principalPayments_monthly)), principalPayments_monthly)
-        plt.plot(range(len(interestPayments_monthly)), interestPayments_monthly)
-        plt.show()
-    
-    taxPayments_annual = np.array([t*max((p-hd), 0)*aH**x for x in range(N)])
-    taxPayments_total = taxPayments_annual.sum()
+    taxPayments_annual = np.array([t*max((p-hd), 0)*(1 + aH)**year for year in range(N)])
     taxPayments_monthly = np.array([taxPayments_annual[year]/12 \
                                     for year in range(N) for _ in range(12)])
-    paymentsWithTax_monthly = taxPayments_monthly + paymentNoTax_monthly
 
-    
-    houseValue_monthly = [p*(1 + (ah - 1)/12)**month for month in range(n)]
+    houseValue_monthly = [p*(1 + ah/12)**month for month in range(n)]
     houseEquity_monthly = houseValue_monthly - loanRemaining_monthly[:-1]
 
-    plot = False
-    if plot:
-        plt.plot(range(len(houseValue_monthly)), houseValue_monthly)
-        plt.plot(range(len(houseEquity_monthly)), houseEquity_monthly)
-        plt.show()
+    totalPayments_monthly = paymentNoTax_monthly + taxPayments_monthly
+    sumOfAllPayments_monthly = np.array([sum(totalPayments_monthly[:i]) for i in range(len(totalPayments_monthly))])
+    sumOfAllPayments_monthly += p*c + d     # include closing cost and down payment in total 
+    mortgageRateOfReturn_monthly = (houseEquity_monthly - sumOfAllPayments_monthly) / sumOfAllPayments_monthly
+    
+    # For time period after mortgage ends
+    if analysisTimePeriodYears > N:
+        taxPayments_annual = np.concatenate((taxPayments_annual, [t*max((p-hd), 0)*(1 + aH)**year \
+                                                                  for year in range(N, analysisTimePeriodYears)]))
+        taxPayments_monthly = np.concatenate((taxPayments_monthly, [taxPayments_annual[year]/12 \
+                                    for year in range(N, analysisTimePeriodYears) for _ in range(12)]))
+        
+        for month in range(n, analysisTimePeriodYears*12):
+            loanRemaining_monthly = np.append(loanRemaining_monthly, 0)
+            interestPayments_monthly = np.append(interestPayments_monthly, 0)
+            principalPayments_monthly = np.append(principalPayments_monthly, 0)
 
-    totalPayments_monthly = np.array([ paymentNoTax_monthly*month + sum(taxPayments_monthly[:month+1]) for month in range(n) ])
-    totalReturns_monthly = houseEquity_monthly - totalPayments_monthly
-    totalRateOfReturn_monthly = totalReturns_monthly / totalPayments_monthly
+        houseValue_monthly = np.concatenate((houseValue_monthly, [p*(1 + ah/12)**month \
+                                                                  for month in range(n, analysisTimePeriodYears*12)]))
+        houseEquity_monthly = houseValue_monthly - loanRemaining_monthly[:-1]
 
-    plot = True
-    if plot:
-        plt.plot(range(len(totalPayments_monthly)), totalPayments_monthly)
-        plt.show()
+        totalPayments_monthly = np.concatenate((totalPayments_monthly, taxPayments_monthly[n:]))
+        sumOfAllPayments_monthly = np.array([sum(totalPayments_monthly[:i]) for i in range(len(totalPayments_monthly))])
+        sumOfAllPayments_monthly += p*c + d     # include closing cost and down payment in total 
+        mortgageRateOfReturn_monthly = (houseEquity_monthly - sumOfAllPayments_monthly) / sumOfAllPayments_monthly
 
-    return totalRateOfReturn_monthly[-1]
+        if showPlot:
+            plt.plot(range(len(mortgageRateOfReturn_monthly)), mortgageRateOfReturn_monthly*100)
+            plt.xlabel('Months')
+            plt.xticks([48*year for year in range(int(analysisTimePeriodYears/4))])
+            plt.ylabel('Return on Investment (%)')
+            plt.grid()
+            plt.show()
+
+    return_df = pd.DataFrame()
+    return_df.index.name = 'month'
+    return_df['rate_of_return'] = mortgageRateOfReturn_monthly
+    return_df['loan_remaining'] = loanRemaining_monthly[:-1]
+    return_df['home_value'] = houseValue_monthly
+    return_df['home_equity'] = houseEquity_monthly
+    return_df['tax_payment_this_month'] = taxPayments_monthly
+    return_df['tax_payments_cumulative'] = [sum(taxPayments_monthly[:month]) for month in range(len(taxPayments_monthly))]
+    return_df['mortgage_payment_this_month'] = np.concatenate(([paymentNoTax_monthly for _ in range(n)], \
+                                                               [0 for _ in range(n, analysisTimePeriodYears*12)]))
+    return_df['mortgage_payments_cumulative'] = [sum(return_df['mortgage_payment_this_month'][:month]) \
+                                                 for month in range(len(return_df['mortgage_payment_this_month']))]
+    # TODO: finish building return_df
+
+    return return_df
+
+mortgageReturnAnalysis(400000, 0.04, 40000, 0.03, 15, 0.02, 0.05, showPlot=True)
+
+
 
 # def compoundInterest(time_years:float, interestRate_annual:float, monthlyContributions:float|list[float]|np.array, 
 #                      principal:float=None, compoundingFrequency:float|str=None):
@@ -100,3 +132,4 @@ def mortgageReturnRate(housePrice:float, interestRateAnnual:float, downPayment:f
 #     else:
 #         for i in range(compoundingFrequency*time_years):
 #             pass
+
