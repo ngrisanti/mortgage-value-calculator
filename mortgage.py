@@ -49,14 +49,17 @@ def mortgageReturnAnalysis(housePrice:float, interestRateAnnual:float, downPayme
     houseEquity_monthly = houseValue_monthly - loanRemaining_monthly[:-1]
 
     totalPayments_monthly = paymentNoTax_monthly + taxPayments_monthly
-    sumOfAllPayments_monthly = np.array([sum(totalPayments_monthly[:i]) for i in range(len(totalPayments_monthly))])
+    sumOfAllPayments_monthly = np.array([sum(totalPayments_monthly[:i]) \
+                                         for i in range(len(totalPayments_monthly))])
     sumOfAllPayments_monthly += p*c + d     # include closing cost and down payment in total 
-    mortgageRateOfReturn_monthly = (houseEquity_monthly - sumOfAllPayments_monthly) / sumOfAllPayments_monthly
+    mortgageRateOfReturn_monthly = (houseEquity_monthly - sumOfAllPayments_monthly) \
+                                    / sumOfAllPayments_monthly
     
     # For time period after mortgage ends
     if analysisTimePeriodYears > N:
-        taxPayments_annual = np.concatenate((taxPayments_annual, [t*max((p-hd), 0)*(1 + aH)**year \
-                                                                  for year in range(N, analysisTimePeriodYears)]))
+        taxPayments_annual = np.concatenate((taxPayments_annual, \
+                                             [t*max((p-hd), 0)*(1 + aH)**year \
+                                             for year in range(N, analysisTimePeriodYears)]))
         taxPayments_monthly = np.concatenate((taxPayments_monthly, [taxPayments_annual[year]/12 \
                                     for year in range(N, analysisTimePeriodYears) for _ in range(12)]))
         
@@ -65,25 +68,16 @@ def mortgageReturnAnalysis(housePrice:float, interestRateAnnual:float, downPayme
             interestPayments_monthly = np.append(interestPayments_monthly, 0)
             principalPayments_monthly = np.append(principalPayments_monthly, 0)
 
-        houseValue_monthly = np.concatenate((houseValue_monthly, [p*(1 + ah/12)**month \
-                                                                  for month in range(n, analysisTimePeriodYears*12)]))
+        houseValue_monthly = np.concatenate((houseValue_monthly, [p*(1 + ah/12)**month for month in \
+                                                                  range(n, analysisTimePeriodYears*12)]))
         houseEquity_monthly = houseValue_monthly - loanRemaining_monthly[:-1]
 
         totalPayments_monthly = np.concatenate((totalPayments_monthly, taxPayments_monthly[n:]))
-        sumOfAllPayments_monthly = np.array([sum(totalPayments_monthly[:i]) for i in range(len(totalPayments_monthly))])
+        sumOfAllPayments_monthly = np.array([sum(totalPayments_monthly[:i]) \
+                                             for i in range(len(totalPayments_monthly))])
         sumOfAllPayments_monthly += p*c + d     # include closing cost and down payment in total 
-        mortgageRateOfReturn_monthly = (houseEquity_monthly - sumOfAllPayments_monthly) / sumOfAllPayments_monthly
-
-        if showPlot:
-            xVals = list(range(len(mortgageRateOfReturn_monthly)))
-            xVals = [1 + x for x in xVals]
-            plt.plot(xVals, mortgageRateOfReturn_monthly*100)
-            plt.plot([n, n], [min(mortgageRateOfReturn_monthly*100), max(mortgageRateOfReturn_monthly*100)])
-            plt.xlabel('Months')
-            plt.xticks([48*year for year in range(int(analysisTimePeriodYears/4)+1)])
-            plt.ylabel('Return on Investment (%)')
-            plt.grid()
-            plt.show()
+        mortgageRateOfReturn_monthly = (houseEquity_monthly - sumOfAllPayments_monthly) \
+                                        / sumOfAllPayments_monthly
 
     return_df = pd.DataFrame()
     return_df.index.name = 'month'
@@ -112,22 +106,54 @@ def mortgageReturnAnalysis(housePrice:float, interestRateAnnual:float, downPayme
         col_basis = col[:-9]
         if col[-9:] == '_previous':
             if col_basis == 'all_payments':
-                return_df[f'{col_basis}_cumulative'] = return_df[f'{col_basis}_this_month'] + return_df[f'{col_basis}_previous']
+                return_df[f'{col_basis}_cumulative'] = return_df[f'{col_basis}_this_month'] \
+                    + return_df[f'{col_basis}_previous']
                 return_df = return_df.drop(f'{col_basis}_previous', axis=1)
             else:
                 col_basis = col_basis[:-1]
-                return_df[f'{col_basis}s_cumulative'] = return_df[f'{col_basis}_this_month'] + return_df[f'{col_basis}s_previous']
+                return_df[f'{col_basis}s_cumulative'] = return_df[f'{col_basis}_this_month'] \
+                    + return_df[f'{col_basis}s_previous']
                 return_df = return_df.drop(f'{col_basis}s_previous', axis=1)
 
     return_df.index += 1
+
+    if showPlot:
+            xVals = list(range(len(mortgageRateOfReturn_monthly)))
+            xVals = [1 + x for x in xVals]
+            plt.plot(xVals, mortgageRateOfReturn_monthly*100)
+            plt.axvline(x=n, color='red')
+            plt.xlabel('Months')
+            plt.xticks([48*year for year in range(int(analysisTimePeriodYears/4)+1)])
+            plt.ylabel('Return on Investment (%)')
+            plt.grid()
+            plt.show()
+
     return return_df
 
-def compoundInterestCalculator(principal:float, interestRateAnnual:float, monthlyContribution:float = None,
-                               compoundingsPerYear:float = None, analysisTimePeriodYears:float = None) -> pd.DataFrame:
-    
-    if monthlyContribution is None:
-        monthlyContribution = 0
-    if compoundingsPerYear is None:
-        compoundingsPerYear = 12
+def compoundInterestCalculator(principal:float, apy:float, monthlyContribution:list[float]|float = None,
+                               analysisTimePeriodYears:float = None) -> pd.DataFrame:
+    """Note: this function assumes interest compounds monthly, so `apy` is greater than the \
+        simple intererest rate"""
+
     if analysisTimePeriodYears is None:
         analysisTimePeriodYears = 40
+    if monthlyContribution is None:
+        monthlyContribution = np.array([0 for _ in range(analysisTimePeriodYears*12)])
+    elif isinstance(monthlyContribution, float|int):
+        monthlyContribution = np.array([monthlyContribution for _ in range(analysisTimePeriodYears*12)])
+    elif len(monthlyContribution) == analysisTimePeriodYears*12 - 1:
+        monthlyContribution = [0] + monthlyContribution
+    if not (len(monthlyContribution) == analysisTimePeriodYears*12):
+        raise ValueError("`monthlyContribution` must be of either a float or \
+                         a list of floats with length `analysisTimePeriodYears`*12")
+
+    monthlyYield = ((1+apy)**(1/12)-1)*12
+    print(monthlyYield)
+
+    total = principal
+    for month in range(analysisTimePeriodYears*12):
+        total += monthlyContribution[month]
+        total *= 1 + (monthlyYield/12)
+
+    return total
+
