@@ -1,16 +1,19 @@
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
+from math import floor
 
 def mortgageReturnAnalysis(housePrice:float, interestRateAnnual:float, downPayment:float, 
                   closingCostPercent:float, mortgageTermYears:float, propertyTaxRate:float, 
-                  houseAppreciationRate:float, homesteadDeduction:float = None, 
+                  houseAppreciationRate:float = None, homesteadDeduction:float = None, 
                   analysisTimePeriodYears:float = None, showPlot:bool = None) -> pd.DataFrame:
-
+    
     if homesteadDeduction is None:
         homesteadDeduction = 100000
     if analysisTimePeriodYears is None:
         analysisTimePeriodYears = 40
+    if houseAppreciationRate is None:
+        houseAppreciationRate = 0.034
     if showPlot is None:
         showPlot = False
     
@@ -49,11 +52,9 @@ def mortgageReturnAnalysis(housePrice:float, interestRateAnnual:float, downPayme
     houseEquity_monthly = houseValue_monthly - loanRemaining_monthly[:-1]
 
     totalPayments_monthly = paymentNoTax_monthly + taxPayments_monthly
+    totalPayments_monthly[0] += p*c + d  # include closing cost and down payment in first month's payment
     sumOfAllPayments_monthly = np.array([sum(totalPayments_monthly[:i]) \
-                                         for i in range(len(totalPayments_monthly))])
-    sumOfAllPayments_monthly += p*c + d     # include closing cost and down payment in total 
-    mortgageRateOfReturn_monthly = (houseEquity_monthly - sumOfAllPayments_monthly) \
-                                    / sumOfAllPayments_monthly
+                                         for i in range(len(totalPayments_monthly))]) 
     
     # For time period after mortgage ends
     if analysisTimePeriodYears > N:
@@ -75,13 +76,9 @@ def mortgageReturnAnalysis(housePrice:float, interestRateAnnual:float, downPayme
         totalPayments_monthly = np.concatenate((totalPayments_monthly, taxPayments_monthly[n:]))
         sumOfAllPayments_monthly = np.array([sum(totalPayments_monthly[:i]) \
                                              for i in range(len(totalPayments_monthly))])
-        sumOfAllPayments_monthly += p*c + d     # include closing cost and down payment in total 
-        mortgageRateOfReturn_monthly = (houseEquity_monthly - sumOfAllPayments_monthly) \
-                                        / sumOfAllPayments_monthly
 
     return_df = pd.DataFrame()
     return_df.index.name = 'month'
-    return_df['rate_of_return'] = mortgageRateOfReturn_monthly
     return_df['loan_remaining'] = loanRemaining_monthly[:-1]
     return_df['home_value'] = houseValue_monthly
     return_df['home_equity'] = houseEquity_monthly
@@ -115,13 +112,14 @@ def mortgageReturnAnalysis(housePrice:float, interestRateAnnual:float, downPayme
                     + return_df[f'{col_basis}s_previous']
                 return_df = return_df.drop(f'{col_basis}s_previous', axis=1)
 
-    return_df.index += 1
+    return_df['return_on_spend'] = (return_df['home_equity'] - return_df['all_payments_cumulative']) \
+                                    / return_df['all_payments_cumulative']
 
     if showPlot:
-            xVals = list(range(len(mortgageRateOfReturn_monthly)))
+            xVals = list(range(len(return_df)))
             xVals = [1 + x for x in xVals]
-            plt.plot(xVals, mortgageRateOfReturn_monthly*100)
-            plt.axvline(x=n, color='red')
+            plt.plot(xVals, 100*return_df['return_on_spend'])
+            plt.axvline(x=n+1, color='red')
             plt.xlabel('Months')
             plt.xticks([48*year for year in range(int(analysisTimePeriodYears/4)+1)])
             plt.ylabel('Return on Investment (%)')
@@ -129,6 +127,8 @@ def mortgageReturnAnalysis(housePrice:float, interestRateAnnual:float, downPayme
             plt.show()
 
     return return_df
+
+df = mortgageReturnAnalysis(400000, 0.07, 20000, 0.03, 20, 0.02, 0.034, showPlot=False)
 
 def compoundInterestCalculator(principal:float, apy:float, monthlyContribution:list[float]|float = None,
                                analysisTimePeriodYears:float = None) -> pd.DataFrame:
@@ -150,10 +150,38 @@ def compoundInterestCalculator(principal:float, apy:float, monthlyContribution:l
     monthlyYield = ((1+apy)**(1/12)-1)*12
     print(monthlyYield)
 
+    totals_monthly = np.array([])
+
     total = principal
     for month in range(analysisTimePeriodYears*12):
         total += monthlyContribution[month]
         total *= 1 + (monthlyYield/12)
+        totals_monthly = np.append(totals_monthly, total)
 
-    return total
+    return totals_monthly
 
+def compareReturns(mortgage_df:pd.DataFrame, rentPrice:float, rentInflationRate:float = None, \
+                   marketReturnRate:float = None, showPlot:bool = None):
+
+    if rentInflationRate is None:
+        rentInflationRate = 0.045
+    if marketReturnRate is None:
+        marketReturnRate = 0.1
+    if showPlot is None:
+        showPlot = False
+
+    N, n = floor(len(mortgage_df)/12), len(mortgage_df)
+
+    rentPrices_monthly = np.array([rentPrice * (1 + rentInflationRate)**years for years in range(N) for _ in range(12)])
+    priceDifferential = mortgage_df['all_payments_this_month'] - rentPrices_monthly
+
+    returns = compoundInterestCalculator(0, marketReturnRate, priceDifferential, N)
+
+    if showPlot:
+        xVals = xVals = list(range(n))
+        plt.plot(xVals, returns)
+        plt.show()
+
+    return 
+
+ans = compareReturns(df, 1600, showPlot=True)
