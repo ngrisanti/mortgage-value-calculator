@@ -113,7 +113,7 @@ def mortgageReturnAnalysis(housePrice:float, interestRateAnnual:float, downPayme
 
 
 def compoundInterestCalculator(principal:float, apy:float, monthlyContribution:list[float]|float = None,
-                               analysisTimePeriodYears:float = None) -> pd.DataFrame:
+                               analysisTimePeriodYears:float = None, showPlot=False) -> pd.DataFrame:
     """Note: this function assumes interest compounds monthly, so `apy` is greater than the \
         simple intererest rate"""
 
@@ -139,7 +139,17 @@ def compoundInterestCalculator(principal:float, apy:float, monthlyContribution:l
         total *= 1 + (monthlyYield/12)
         totals_monthly = np.append(totals_monthly, total)
 
+    if showPlot:
+        xVals = list(range(analysisTimePeriodYears*12+1))
+        plt.plot(xVals, totals_monthly)
+        plt.xlabel('Months')
+        plt.xticks([48*year for year in range(int(analysisTimePeriodYears/4)+1)])
+        plt.ylabel('Portfolio Value ($)')
+        plt.grid()
+        plt.show()
+
     return totals_monthly
+
 
 def cumulativeOpportunityCost(mortgage_df:pd.DataFrame, rentPrice:float, rentInflationRate:float = None, \
                    marketReturnRate:float = None, showPlot:bool = None) -> pd.DataFrame:
@@ -171,22 +181,26 @@ def cumulativeOpportunityCost(mortgage_df:pd.DataFrame, rentPrice:float, rentInf
     return_df.index.name = 'month'
     return return_df
 
+
 def compareReturns(mortgage_df:pd.DataFrame, rent_df:pd.DataFrame, showPlot=False) -> pd.DataFrame:
     return_df = mortgage_df
-    return_df.rename(columns={'return_on_investment': 'return_on_investment_mortgage'})
+    return_df = return_df.rename(columns={'return_on_investment': 'return_on_investment_mortgage'})
     return_df['rent_returns_raw'] = rent_df
     return_df['return_on_investment_rent'] = (return_df['rent_returns_raw'] - return_df['all_payments_cumulative']) / return_df['all_payments_cumulative']
+
+    n = len(return_df) - 1
+    N = int(n/12)
 
     if showPlot:
         xVals = list(range(len(return_df)))
         plt.plot(xVals, 100*return_df['return_on_investment_mortgage'], color='blue')
         plt.plot(xVals, 100*return_df['return_on_investment_rent'], color='purple')
         plt.xlabel('Months')
-        plt.xticks([48*year for year in range(len(return_df)/12+1)])
-        plt.ylabel('Portfolio Value ($)')
+        plt.xticks([48*year for year in range(int(N/4)+1)])
+        plt.ylabel('Return on Investment (%)')
         plt.grid()
         plt.show()
 
-mortgage_df = mortgageReturnAnalysis(400000, 0.07, 20000, 0.03, 20, 0.02, 0.034, showPlot=True)
+mortgage_df = mortgageReturnAnalysis(400000, 0.03, 20000, 0.03, 20, 0.02, 0.04, showPlot=False)
 rent_df = cumulativeOpportunityCost(mortgage_df, 1600, showPlot=False)
-returns = compareReturns(mortgage_df, rent_df)
+returns = compareReturns(mortgage_df, rent_df, showPlot=False)
