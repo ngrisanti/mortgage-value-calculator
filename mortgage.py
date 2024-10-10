@@ -7,7 +7,8 @@ from math import floor
 def mortgageReturnAnalysis(housePrice:float, interestRateAnnual:float, downPayment:float, 
                   closingCostPercent:float, mortgageTermYears:float, propertyTaxRate:float, 
                   houseAppreciationRate:float = None, homesteadDeduction:float = None, 
-                  analysisTimePeriodYears:float = None, showPlot:bool = None) -> pd.DataFrame:
+                  analysisTimePeriodYears:float = None, showPlot:bool = None, 
+                  verbose:bool = None) -> pd.DataFrame:
     
     if homesteadDeduction is None:
         homesteadDeduction = 100000
@@ -17,6 +18,8 @@ def mortgageReturnAnalysis(housePrice:float, interestRateAnnual:float, downPayme
         houseAppreciationRate = 0.034
     if showPlot is None:
         showPlot = False
+    if verbose is None:
+        verbose = False
     
     p = housePrice
     I, i = interestRateAnnual, interestRateAnnual/12
@@ -97,6 +100,12 @@ def mortgageReturnAnalysis(housePrice:float, interestRateAnnual:float, downPayme
 
     return_df['return_on_investment'] = (return_df['home_equity'] - return_df['all_payments_cumulative']) \
                                     / return_df['all_payments_cumulative']
+    
+    if verbose:
+        print(f'loan amount: {l}')
+        print(f'monthly payment (excluding tax): {round(paymentNoTax_monthly, 2)}')
+        roi_percent = round(list(return_df["return_on_investment"])[-1]*100, 2)
+        print(f'return on investment after {mortgageTermYears} years: {roi_percent}')
 
     if showPlot:
             xVals = list(range(len(return_df)))
@@ -186,21 +195,28 @@ def compareReturns(mortgage_df:pd.DataFrame, rent_df:pd.DataFrame, showPlot=Fals
     return_df = mortgage_df
     return_df = return_df.rename(columns={'return_on_investment': 'return_on_investment_mortgage'})
     return_df['rent_returns_raw'] = rent_df
-    return_df['return_on_investment_rent'] = (return_df['rent_returns_raw'] - return_df['all_payments_cumulative']) / return_df['all_payments_cumulative']
+    return_df['return_on_investment_rent'] = \
+        (return_df['rent_returns_raw'] - return_df['all_payments_cumulative']) / return_df['all_payments_cumulative']
 
     n = len(return_df) - 1
     N = int(n/12)
 
     if showPlot:
         xVals = list(range(len(return_df)))
-        plt.plot(xVals, 100*return_df['return_on_investment_mortgage'], color='blue')
-        plt.plot(xVals, 100*return_df['return_on_investment_rent'], color='purple')
-        plt.xlabel('Months')
-        plt.xticks([48*year for year in range(int(N/4)+1)])
+        xVals = [months/12 for months in xVals]
+        tick_spacing = 2
+        plt.plot(xVals, 100*return_df['return_on_investment_mortgage'], color='blue', label='Mortgage')
+        plt.plot(xVals, 100*return_df['return_on_investment_rent'], color='purple', label='Renting')
+        plt.xlabel('Years')
+        plt.xticks([tick_spacing*year for year in range(int(N/tick_spacing)+1)])
         plt.ylabel('Return on Investment (%)')
         plt.grid()
+        plt.legend(loc="upper left")
         plt.show()
 
-mortgage_df = mortgageReturnAnalysis(400000, 0.03, 20000, 0.03, 20, 0.02, 0.04, showPlot=False)
-rent_df = cumulativeOpportunityCost(mortgage_df, 1600, showPlot=False)
-returns = compareReturns(mortgage_df, rent_df, showPlot=False)
+
+mortgage_df = mortgageReturnAnalysis(housePrice=350000, interestRateAnnual=0.04, downPayment=20000, \
+                                     closingCostPercent=0.03, mortgageTermYears=30, propertyTaxRate=0.02, \
+                                     houseAppreciationRate=0.04, showPlot=False, verbose=True)
+rent_df = cumulativeOpportunityCost(mortgage_df, 1331, showPlot=False)
+returns = compareReturns(mortgage_df, rent_df, showPlot=True)
