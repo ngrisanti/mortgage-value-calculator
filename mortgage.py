@@ -46,7 +46,7 @@ def mortgageReturnAnalysis(housePrice:float, interestRateAnnual:float, downPayme
                                            -paymentNoTax_monthly+monthlyInterest])
 
     principalPayments_monthly = np.array([0] + [paymentNoTax_monthly \
-                                          - interestPayments_monthly[month] for month in range(n)])
+                                          - interestPayments_monthly[month + 1] for month in range(n)])
 
     taxPayments_annual = np.array([t*max((p-hd), 0)*(1 + aH)**year for year in range(N)])
     taxPayments_monthly = np.array([0] + [taxPayments_annual[year]/12 \
@@ -215,7 +215,7 @@ def compareReturns(mortgage_df:pd.DataFrame, rent_df:pd.DataFrame, showPlot=Fals
         plt.show()
 
 
-mortgage_df = mortgageReturnAnalysis(housePrice=350000, interestRateAnnual=0.04, downPayment=20000, \
+mortgage_df = mortgageReturnAnalysis(housePrice=350_000, interestRateAnnual=0.045, downPayment=20000, \
                                      closingCostPercent=0.03, mortgageTermYears=30, propertyTaxRate=0.02, \
                                      houseAppreciationRate=0.04, showPlot=False, verbose=True)
 rent_df = cumulativeOpportunityCost(mortgage_df, 1331, showPlot=False)
